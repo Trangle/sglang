@@ -28,6 +28,7 @@ class SeparatorStyle(IntEnum):
     CHATGLM3 = auto()
     DEEPSEEK_CHAT = auto()
     METAMATH = auto()
+    YUTANG = auto()
 
 
 @dataclasses.dataclass
@@ -241,6 +242,14 @@ class Conversation:
                 else:
                     ret += role + ":"
             return ret
+        elif self.sep_style == SeparatorStyle.YUTANG:
+            ret = "" if system_prompt == "" else system_prompt + self.sep
+            for i, (role, message) in enumerate(self.messages):
+                if message:
+                    ret += role + "\n" + message + self.sep + "\n" if i % 2 == 0 else ""
+                else:
+                    ret += role + "\n"
+            return ret
         else:
             raise ValueError(f"Invalid style: {self.sep_style}")
 
@@ -417,5 +426,46 @@ register_conv_template(
         sep_style=SeparatorStyle.ADD_COLON_TWO,
         sep=" ",
         sep2="</s>",
+    )
+)
+
+register_conv_template(
+    Conversation(
+        name="yt-chat-v1.2",
+        system_template="<|im_start|>system\n{system_message}",
+        system_message="A chat between a curious user and an AI role. The role gives helpful, detailed, and polite answers to the user's questions.\n"
+        "Your name is Nety, a virtual character created by researchers from BaoYu Organization (BYO).",
+        roles=("<|im_start|>user", "<|im_start|>role"),
+        sep_style=SeparatorStyle.YUTANG,
+        sep="<|im_end|>",
+        stop_str=["<|im_end|>", "</s>", "<|im_start|>", "<s>", "</|im"],
+    )
+)
+
+register_conv_template(
+    Conversation(
+        name="yt-chat-v1.3",
+        system_template="<s>System\n{system_message}",
+        system_message="A chat between a curious user and an AI role. The role gives helpful, detailed, and polite answers to the user's questions.\n"
+        "Your name is Nety, a virtual character created by researchers from BaoYu Organization (BYO).",
+        roles=("<s>User", "<s>Role"),
+        sep_style=SeparatorStyle.CHATML,
+        sep="</s>",
+        stop_str=["</s>", "<s>"],
+        stop_token_ids=[2, 1, 0],
+    )
+)
+
+register_conv_template(
+    Conversation(
+        name="yt-chat-v1.6",
+        system_template="<|im_start|>system\n{system_message}",
+        system_message="A chat between a curious user and an AI role. The role gives helpful, detailed, and polite answers to the user's questions.\n"
+        "Your name is Nety, a virtual character created by researchers from BaoYu Organization (BYO).",
+        roles=("<|im_start|>user", "<|im_start|>role"),
+        sep_style=SeparatorStyle.CHATML,
+        sep="<|im_end|>",
+        stop_str=["<|im_end|>", "<|im_start|>", "</|im"],
+        stop_token_ids=[151645, 151643, 151644],
     )
 )

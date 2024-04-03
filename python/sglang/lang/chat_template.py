@@ -68,9 +68,9 @@ def get_chat_template(name):
     return chat_template_registry[name]
 
 
-def get_chat_template_by_model_path(model_path):
+def get_chat_template_by_model_path(model_path, model_id=None):
     for matching_func in matching_function_registry:
-        template = matching_func(model_path)
+        template = matching_func(model_path, model_id=model_id)
         if template is not None:
             return template
     return get_chat_template("default")
@@ -205,15 +205,67 @@ register_chat_template(
     )
 )
 
+register_chat_template(
+    ChatTemplate(
+        name="yt-chat-v1.2",
+        default_system_prompt=(
+            "A chat between a curious user and an AI role. The role gives helpful, detailed, and polite answers to the user's questions.\n"
+            "Your name is Nety, a virtual character created by researchers from BaoYu Organization (BYO)."
+        ),
+        role_prefix_and_suffix={
+            "system": ("<|im_start|>system\n", "<|im_end|>"),
+            "user": ("<|im_start|>user\n", "<|im_end|>"),
+            "assistant": ("\n<|im_start|>role\n", "<|im_end|>"),
+        },
+        stop_str=("<|im_end|>", "</s>", "<|im_start|>", "<s>", "</|im"),
+    )
+)
+
+register_chat_template(
+    ChatTemplate(
+        name="yt-chat-v1.3",
+        default_system_prompt=(
+            "A chat between a curious user and an AI role. The role gives helpful, detailed, and polite answers to the user's questions.\n"
+            "Your name is Nety, a virtual character created by researchers from BaoYu Organization (BYO)."
+        ),
+        role_prefix_and_suffix={
+            "system": ("<s>System\n", "</s>"),
+            "user": ("\n<s>User\n", "</s>"),
+            "assistant": ("\n<s>Role\n", "</s>"),
+        },
+        stop_str=("</s>",),
+    )
+)
+
+register_chat_template(
+    ChatTemplate(
+        name="yt-chat-v1.6",
+        default_system_prompt=(
+            "A chat between a curious user and an AI role. The role gives helpful, detailed, and polite answers to the user's questions.\n"
+            "Your name is Nety, a virtual character created by researchers from BaoYu Organization (BYO)."
+        ),
+        role_prefix_and_suffix={
+            "system": ("<|im_start|>system\n", "<|im_end|>"),
+            "user": ("\n<|im_start|>user\n", "<|im_end|>"),
+            "assistant": ("\n<|im_start|>role\n", "<|im_end|>"),
+        },
+        stop_str=("<|im_end|>",),
+    )
+)
+
 
 @register_chat_template_matching_function
-def match_dbrx(model_path: str):
-    if "dbrx" in model_path.lower() and "instruct" in model_path.lower():
+def match_dbrx(model_path: str, model_id: str = None):
+    if model_id and model_id == "dbrx":
+        return get_chat_template("dbrx-instruct")
+    if model_id and model_id == "dbrx" or ("dbrx" in model_path.lower() and "instruct" in model_path.lower()):
         return get_chat_template("dbrx-instruct")
 
 
 @register_chat_template_matching_function
-def match_vicuna(model_path: str):
+def match_vicuna(model_path: str, model_id: str = None):
+    if model_id and model_id == "vicuna":
+        return get_chat_template("vicuna_v1.1")
     if "vicuna" in model_path.lower():
         return get_chat_template("vicuna_v1.1")
     if "llava-v1.5" in model_path.lower():
@@ -221,7 +273,9 @@ def match_vicuna(model_path: str):
 
 
 @register_chat_template_matching_function
-def match_llama2_chat(model_path: str):
+def match_llama2_chat(model_path: str, model_id: str = None):
+    if model_id and model_id == "llama-2":
+        return get_chat_template("llama-2-chat")
     model_path = model_path.lower()
     if "llama-2" in model_path and "chat" in model_path:
         return get_chat_template("llama-2-chat")
@@ -234,7 +288,12 @@ def match_llama2_chat(model_path: str):
 
 
 @register_chat_template_matching_function
-def match_chat_ml(model_path: str):
+def match_chat_ml(model_path: str, model_id: str = None):
+    if model_id:
+        if model_id == "chatml":
+            return get_chat_template("chatml")
+        if model_id == "chatml-llava":
+            return get_chat_template("chatml-llava")
     model_path = model_path.lower()
     if "tinyllama" in model_path:
         return get_chat_template("chatml")
@@ -245,18 +304,36 @@ def match_chat_ml(model_path: str):
 
 
 @register_chat_template_matching_function
-def match_chat_yi(model_path: str):
+def match_chat_yi(model_path: str, model_id: str = None):
+    if model_id and model_id == "yi":
+        return get_chat_template("yi")
     model_path = model_path.lower()
     if "yi" in model_path:
         return get_chat_template("yi")
 
 
 @register_chat_template_matching_function
-def match_gemma_it(model_path: str):
+def match_gemma_it(model_path: str, model_id: str = None):
+    if model_id and model_id == "gemma":
+        return get_chat_template("gemma-it")
     model_path = model_path.lower()
     if "gemma" in model_path and "it" in model_path:
         return get_chat_template("gemma-it")
 
+
+@register_chat_template_matching_function
+def match_ytchat_v12(model_path: str, model_id: str = None):
+    if model_id:
+        if model_id == "yt-chat-v1.2":
+            return get_chat_template("yt-chat-v1.2")
+        if model_id == "yt-chat-v1.3":
+            return get_chat_template("yt-chat-v1.3")
+        if model_id == "yt-chat-v1.6":
+            return get_chat_template("yt-chat-v1.6")
+    model_path = model_path.lower()
+    if "yt-chat" in model_path:
+        return get_chat_template("yt-chat-v1.3")
+    
 
 if __name__ == "__main__":
     messages = [

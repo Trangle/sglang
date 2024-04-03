@@ -36,6 +36,7 @@ class RuntimeEndpoint(BaseBackend):
         assert res.status_code == 200
         self.model_info = res.json()
 
+        # TODO(trangle): add model_id to model_info
         self.chat_template = get_chat_template_by_model_path(
             self.model_info["model_path"]
         )

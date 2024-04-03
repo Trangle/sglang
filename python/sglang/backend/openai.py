@@ -45,6 +45,7 @@ class OpenAI(BaseBackend):
     def __init__(
         self,
         model_name: str,
+        model_id: str = None,
         is_chat_model: Optional[bool] = None,
         chat_template: Optional[ChatTemplate] = None,
         is_azure: bool = False,
@@ -69,7 +70,8 @@ class OpenAI(BaseBackend):
         self.logit_bias_int = create_logit_bias_int(self.tokenizer)
 
         self.chat_template = chat_template or get_chat_template_by_model_path(
-            model_name
+            model_name,
+            model_id=model_id,
         )
 
         if is_chat_model is not None:
