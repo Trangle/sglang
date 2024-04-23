@@ -1,8 +1,6 @@
 import heapq
 import time
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Tuple
 
 import torch
 
@@ -179,7 +177,9 @@ class RadixCache:
 
     def _print_helper(self, node, indent):
         for _, child in node.children.items():
-            print(" " * indent, len(child.key), child.key[:10], f"r={child.ref_counter}")
+            print(
+                " " * indent, len(child.key), child.key[:10], f"r={child.ref_counter}"
+            )
             self._print_helper(child, indent=indent + 2)
 
     def _delete_leaf(self, node):
