@@ -452,7 +452,6 @@ register_conv_template(
         sep_style=SeparatorStyle.CHATML,
         sep="</s>",
         stop_str=["</s>", "<s>"],
-        stop_token_ids=[2, 1, 0],
     )
 )
 
@@ -466,6 +465,5 @@ register_conv_template(
         sep_style=SeparatorStyle.CHATML,
         sep="<|im_end|>",
         stop_str=["<|im_end|>", "<|im_start|>", "</|im"],
-        stop_token_ids=[151645, 151643, 151644],
     )
 )
