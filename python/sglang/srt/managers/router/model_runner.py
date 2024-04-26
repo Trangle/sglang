@@ -12,7 +12,7 @@ import torch
 from vllm.model_executor.layers.quantization.awq import AWQConfig
 from vllm.model_executor.layers.quantization.gptq import GPTQConfig
 from vllm.model_executor.layers.quantization.marlin import MarlinConfig
-from vllm.model_executor.model_loader import _set_default_torch_dtype
+from vllm.model_executor.model_loader.utils import set_default_torch_dtype
 from vllm.model_executor.parallel_utils.parallel_state import initialize_model_parallel
 
 from sglang.srt.managers.router.infer_batch import Batch, ForwardMode
@@ -328,7 +328,7 @@ class ModelRunner:
             logger.info(f"quant_config: {quant_config}")
             linear_method = quant_config.get_linear_method()
 
-        with _set_default_torch_dtype(torch.float16):
+        with set_default_torch_dtype(torch.float16):
             with torch.device("cuda"):
                 model = model_class(
                     config=self.model_config.hf_config, linear_method=linear_method
