@@ -10,7 +10,7 @@ from torch import nn
 from transformers import MixtralConfig
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import (
-    LinearMethodBase,
+    QuantizationConfig,
     QKVParallelLinear,
     ReplicatedLinear,
     RowParallelLinear,
@@ -20,10 +20,10 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
     VocabParallelEmbedding,
 )
-from vllm.model_executor.parallel_utils.communication_op import (
+from vllm.distributed.communication_op import (
     tensor_model_parallel_all_reduce,
 )
-from vllm.model_executor.parallel_utils.parallel_state import (
+from vllm.distributed.parallel_state import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
@@ -43,7 +43,7 @@ class MixtralMLP(nn.Module):
         num_experts: int,
         hidden_size: int,
         intermediate_size: int,
-        linear_method: Optional[LinearMethodBase] = None,
+        quant_config: Optional[QuantizationConfig] = None,
     ) -> None:
         super().__init__()
         self.num_experts = num_experts
@@ -51,13 +51,13 @@ class MixtralMLP(nn.Module):
         self.hidden_dim = hidden_size
 
         self.w1 = ReplicatedLinear(
-            self.hidden_dim, self.ffn_dim, bias=False, linear_method=linear_method
+            self.hidden_dim, self.ffn_dim, bias=False, quant_config=quant_config
         )
         self.w2 = ReplicatedLinear(
-            self.ffn_dim, self.hidden_dim, bias=False, linear_method=linear_method
+            self.ffn_dim, self.hidden_dim, bias=False, quant_config=quant_config
         )
         self.w3 = ReplicatedLinear(
-            self.hidden_dim, self.ffn_dim, bias=False, linear_method=linear_method
+            self.hidden_dim, self.ffn_dim, bias=False, quant_config=quant_config
         )
 
         # TODO: Use vllm's SiluAndMul
@@ -76,7 +76,7 @@ class MixtralMoE(nn.Module):
     def __init__(
         self,
         config: MixtralConfig,
-        linear_method: Optional[LinearMethodBase] = None,
+        quant_config: Optional[QuantizationConfig] = None,
     ):
         super().__init__()
         self.config = config
@@ -103,7 +103,7 @@ class MixtralMoE(nn.Module):
                         self.num_total_experts,
                         config.hidden_size,
                         config.intermediate_size,
-                        linear_method=linear_method,
+                        quant_config=quant_config,
                     )
                     if idx in self.expert_indicies
                     else None
@@ -112,7 +112,7 @@ class MixtralMoE(nn.Module):
             ]
         )
         self.gate = ReplicatedLinear(
-            config.hidden_size, self.num_total_experts, bias=False, linear_method=None
+            config.hidden_size, self.num_total_experts, bias=False, quant_config=None
         )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -148,7 +148,7 @@ class MixtralAttention(nn.Module):
         layer_id: int = 0,
         max_position: int = 4096 * 32,
         rope_theta: float = 10000,
-        linear_method: Optional[LinearMethodBase] = None,
+        quant_config: Optional[QuantizationConfig] = None,
         sliding_window: Optional[int] = None,
     ) -> None:
         super().__init__()
@@ -180,13 +180,13 @@ class MixtralAttention(nn.Module):
             self.total_num_heads,
             self.total_num_kv_heads,
             bias=False,
-            linear_method=linear_method,
+            quant_config=quant_config,
         )
         self.o_proj = RowParallelLinear(
             self.total_num_heads * self.head_dim,
             hidden_size,
             bias=False,
-            linear_method=linear_method,
+            quant_config=quant_config,
         )
         self.rotary_emb = get_rope(
             self.head_dim,
@@ -222,7 +222,7 @@ class MixtralDecoderLayer(nn.Module):
         self,
         config: MixtralConfig,
         layer_id: int = 0,
-        linear_method: Optional[LinearMethodBase] = None,
+        quant_config: Optional[QuantizationConfig] = None,
     ) -> None:
         super().__init__()
         self.hidden_size = config.hidden_size
@@ -236,9 +236,9 @@ class MixtralDecoderLayer(nn.Module):
             layer_id=layer_id,
             rope_theta=rope_theta,
             sliding_window=config.sliding_window,
-            linear_method=linear_method,
+            quant_config=quant_config,
         )
-        self.block_sparse_moe = MixtralMoE(config=config, linear_method=linear_method)
+        self.block_sparse_moe = MixtralMoE(config=config, quant_config=quant_config)
         self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(
             config.hidden_size, eps=config.rms_norm_eps
@@ -273,7 +273,7 @@ class MixtralModel(nn.Module):
     def __init__(
         self,
         config: MixtralConfig,
-        linear_method: Optional[LinearMethodBase] = None,
+        quant_config: Optional[QuantizationConfig] = None,
     ) -> None:
         super().__init__()
         self.padding_idx = config.pad_token_id
@@ -286,7 +286,7 @@ class MixtralModel(nn.Module):
         # config.num_hidden_layers=16
         self.layers = nn.ModuleList(
             [
-                MixtralDecoderLayer(config, i, linear_method=linear_method)
+                MixtralDecoderLayer(config, i, quant_config=quant_config)
                 for i in range(config.num_hidden_layers)
             ]
         )
@@ -317,12 +317,12 @@ class MixtralForCausalLM(nn.Module):
     def __init__(
         self,
         config: MixtralConfig,
-        linear_method: Optional[LinearMethodBase] = None,
+        quant_config: Optional[QuantizationConfig] = None,
     ) -> None:
         super().__init__()
         self.config = config
-        self.linear_method = linear_method
-        self.model = MixtralModel(config, linear_method)
+        self.quant_config = quant_config
+        self.model = MixtralModel(config, quant_config)
         self.lm_head = ParallelLMHead(config.vocab_size, config.hidden_size)
         self.logits_processor = LogitsProcessor(config)
 

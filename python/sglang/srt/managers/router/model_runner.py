@@ -304,11 +304,11 @@ class ModelRunner:
         logger.info(f"Rank {self.tp_rank}: load weight begin.")
 
         # Load weights
-        linear_method = None
+        quant_config = None
 
         quant_cfg = getattr(self.model_config.hf_config, "quantization_config", None)
         if quant_cfg is not None:
-            quant_method = quant_cfg.get("quant_method", "").lower()
+            quant_method_name = quant_cfg.get("quant_method", "").lower()
             # compat: autogptq >=0.8.0 use checkpoint_format: str
             # compat: autogptq <=0.7.1 is_marlin_format: bool
             is_format_marlin = quant_cfg.get(
@@ -316,22 +316,22 @@ class ModelRunner:
             ) == "marlin" or quant_cfg.get("is_marlin_format", False)
 
             # Use marlin if the GPTQ model is serialized in marlin format.
-            if quant_method == "gptq" and is_format_marlin:
-                quant_method = "marlin"
+            if quant_method_name == "gptq" and is_format_marlin:
+                quant_method_name = "marlin"
 
-            quant_config_class = QUANTIZATION_CONFIG_MAPPING.get(quant_method)
+            quant_config_class = QUANTIZATION_CONFIG_MAPPING.get(quant_method_name)
 
             if quant_config_class is None:
-                raise ValueError(f"Unsupported quantization method: {quant_method}")
+                raise ValueError(f"Unsupported quantization method: {quant_method_name}")
 
             quant_config = quant_config_class.from_config(quant_cfg)
             logger.info(f"quant_config: {quant_config}")
-            linear_method = quant_config.get_linear_method()
+            # quant_method = quant_config.get_quant_method()
 
         with set_default_torch_dtype(torch.float16):
             with torch.device("cuda"):
                 model = model_class(
-                    config=self.model_config.hf_config, linear_method=linear_method
+                    config=self.model_config.hf_config, quant_config=quant_config
                 )
             model.load_weights(
                 self.model_config.path,

@@ -275,6 +275,52 @@ register_chat_template(
     )
 )
 
+# NOTE: for yt-agi chat template for meta/llama3 specified
+register_chat_template(
+    ChatTemplate(
+        name="yt-chat-v1.7",
+        default_system_prompt=(
+            "A chat between a curious user and an AI role. The role gives helpful, detailed, and polite answers to the user's questions.\n"
+            "Your name is Nety, a virtual character created by researchers from BaoYu Organization (BYO)."
+        ),
+        role_prefix_and_suffix={
+            "system": ("<|begin_of_text|>System\n", "<|end_of_text|>"),
+            "user": ("\n<|begin_of_text|>User\n", "<|end_of_text|>"),
+            "assistant": ("\n<|begin_of_text|>Role\n", "<|end_of_text|>"),
+        },
+        stop_str=("<|end_of_text|>",),
+    )
+)
+
+# NOTE: for yt-agi chat template for google/gemma-xb specified
+register_chat_template(
+    ChatTemplate(
+        name="yt-chat-v1.8",
+        default_system_prompt=(
+            "A chat between a curious user and an AI role. The role gives helpful, detailed, and polite answers to the user's questions.\n"
+            "Your name is Nety, a virtual character created by researchers from BaoYu Organization (BYO)."
+        ),
+        role_prefix_and_suffix={
+            "system": ("<bos>System\n", "<eos>"),
+            "user": ("\n<bos>User\n", "<eos>"),
+            "assistant": ("\n<bos>Role\n", "<eos>"),
+        },
+        stop_str=("<eos>", "<bos>, <pad>, <unk>"),
+    )
+)
+
+register_chat_template(
+    ChatTemplate(
+        name="c4ai-command-r",
+        default_system_prompt=None,
+        role_prefix_and_suffix={
+            "system": ("<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>", "<|END_OF_TURN_TOKEN|>"),
+            "user": ("<|START_OF_TURN_TOKEN|><|USER_TOKEN|>", "<|END_OF_TURN_TOKEN|>"),
+            "assistant": ("<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>", "<|END_OF_TURN_TOKEN|>"),
+        },
+        style=ChatTemplateStyle.PLAIN,
+    )
+)
 
 @register_chat_template_matching_function
 def match_dbrx(model_path: str, model_id: str = None):
@@ -361,10 +407,22 @@ def match_ytchat_v12(model_path: str, model_id: str = None):
             return get_chat_template("yt-chat-v1.3")
         if model_id == "yt-chat-v1.6":
             return get_chat_template("yt-chat-v1.6")
+        if model_id == "yt-chat-v1.7":
+            return get_chat_template("yt-chat-v1.7")
+        if model_id == "yt-chat-v1.8":
+            return get_chat_template("yt-chat-v1.8")
     model_path = model_path.lower()
     if "yt-chat" in model_path:
         return get_chat_template("yt-chat-v1.3")
-    
+
+
+def match_c4ai_command_r(model_path: str, model_id: str = None):
+    if model_id and model_id == "c4ai-command-r":
+        return get_chat_template("c4ai-command-r")
+    model_path = model_path.lower()
+    if "c4ai-command-r" in model_path:
+        return get_chat_template("c4ai-command-r")
+
 
 if __name__ == "__main__":
     messages = [
