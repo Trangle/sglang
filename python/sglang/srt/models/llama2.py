@@ -1,7 +1,7 @@
 # Adapted from
 # https://github.com/vllm-project/vllm/blob/671af2b1c0b3ed6d856d37c21a561cc429a10701/vllm/model_executor/models/llama.py#L1
 """Inference-only LLaMA model compatible with HuggingFace weights."""
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import nn
@@ -9,20 +9,21 @@ from transformers import LlamaConfig
 from vllm.model_executor.layers.activation import SiluAndMul
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import (
-    QuantizationConfig,
     MergedColumnParallelLinear,
     QKVParallelLinear,
     RowParallelLinear,
 )
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizationConfig)
 from vllm.model_executor.layers.rotary_embedding import get_rope
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
     VocabParallelEmbedding,
 )
-from vllm.distributed.parallel_state import (
+from vllm.distributed import (
     get_tensor_model_parallel_world_size,
 )
-from vllm.model_executor.weight_utils import (
+from sglang.srt.weight_utils import (
     default_weight_loader,
     hf_model_weights_iterator,
 )
@@ -48,7 +49,7 @@ class LlamaMLP(nn.Module):
             quant_config=quant_config,
         )
         self.down_proj = RowParallelLinear(
-            intermediate_size, hidden_size, bias=False, quant_config=quant_config
+            intermediate_size, hidden_size, bias=False, quant_config=quant_config,
         )
         if hidden_act != "silu":
             raise ValueError(
@@ -217,7 +218,7 @@ class LlamaModel(nn.Module):
         )
         self.layers = nn.ModuleList(
             [
-                LlamaDecoderLayer(config, i, quant_config)
+                LlamaDecoderLayer(config, i, quant_config=quant_config)
                 for i in range(config.num_hidden_layers)
             ]
         )
@@ -256,7 +257,7 @@ class LlamaForCausalLM(nn.Module):
         super().__init__()
         self.config = config
         self.quant_config = quant_config
-        self.model = LlamaModel(config, quant_config)
+        self.model = LlamaModel(config, quant_config=quant_config)
         self.lm_head = ParallelLMHead(config.vocab_size, config.hidden_size)
         self.logits_processor = LogitsProcessor(config)
 

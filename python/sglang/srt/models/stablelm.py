@@ -9,20 +9,21 @@ from torch import nn
 from transformers import PretrainedConfig
 from vllm.model_executor.layers.activation import SiluAndMul
 from vllm.model_executor.layers.linear import (
-    QuantizationConfig,
     MergedColumnParallelLinear,
     QKVParallelLinear,
     RowParallelLinear,
 )
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizationConfig)
 from vllm.model_executor.layers.rotary_embedding import get_rope
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
     VocabParallelEmbedding,
 )
-from vllm.distributed.parallel_state import (
+from vllm.distributed import (
     get_tensor_model_parallel_world_size,
 )
-from vllm.model_executor.weight_utils import (
+from sglang.srt.weight_utils import (
     default_weight_loader,
     hf_model_weights_iterator,
 )
@@ -34,7 +35,7 @@ from sglang.srt.managers.router.model_runner import InputMetadata
 
 class StablelmMLP(nn.Module):
     def __init__(
-        self, config: PretrainedConfig, quant_config: Optional[QuantizationConfig] = None
+        self, config: PretrainedConfig, quant_config: Optional[QuantizationConfig] = None,
     ) -> None:
         super().__init__()
         self.config = config
@@ -47,7 +48,7 @@ class StablelmMLP(nn.Module):
             quant_config=quant_config,
         )
         self.down_proj = RowParallelLinear(
-            config.intermediate_size, config.hidden_size, bias=False
+            config.intermediate_size, config.hidden_size, bias=False, quant_config=quant_config,
         )
         self.act_fn = SiluAndMul()
 
@@ -150,7 +151,7 @@ class StablelmDecoderLayer(nn.Module):
     ) -> None:
         super().__init__()
         self.self_attn = StablelmAttention(config, layer_id=layer_id)
-        self.mlp = StablelmMLP(config, quant_config)
+        self.mlp = StablelmMLP(config, quant_config=quant_config)
         norm_eps = getattr(config, "norm_eps", getattr(config, "layer_norm_eps", 1e-05))
         self.input_layernorm = nn.LayerNorm(config.hidden_size, eps=norm_eps)
         self.post_attention_layernorm = nn.LayerNorm(config.hidden_size, eps=norm_eps)
@@ -182,7 +183,7 @@ class StablelmDecoderLayer(nn.Module):
 
 class StableLMEpochModel(nn.Module):
     def __init__(
-        self, config: PretrainedConfig, quant_config: Optional[QuantizationConfig] = None
+        self, config: PretrainedConfig, quant_config: Optional[QuantizationConfig] = None,
     ) -> None:
         super().__init__()
         self.embed_tokens = VocabParallelEmbedding(
@@ -191,7 +192,7 @@ class StableLMEpochModel(nn.Module):
         )
         self.layers = nn.ModuleList(
             [
-                StablelmDecoderLayer(config, i, quant_config)
+                StablelmDecoderLayer(config, i, quant_config=quant_config)
                 for i in range(config.num_hidden_layers)
             ]
         )
@@ -229,7 +230,7 @@ class StableLmForCausalLM(nn.Module):
         super().__init__()
         self.config = config
         self.quant_config = quant_config
-        self.model = StableLMEpochModel(config, quant_config)
+        self.model = StableLMEpochModel(config, quant_config=quant_config)
         self.lm_head = ParallelLMHead(config.vocab_size, config.hidden_size)
         self.logits_processor = LogitsProcessor(config)
 

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
 from torch import nn
@@ -6,20 +6,21 @@ from transformers import PretrainedConfig
 from vllm.model_executor.layers.activation import SiluAndMul
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import (
-    QuantizationConfig,
     MergedColumnParallelLinear,
     QKVParallelLinear,
     RowParallelLinear,
 )
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizationConfig)
 from vllm.model_executor.layers.rotary_embedding import get_rope
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
     VocabParallelEmbedding,
 )
-from vllm.distributed.parallel_state import (
+from vllm.distributed import (
     get_tensor_model_parallel_world_size,
 )
-from vllm.model_executor.weight_utils import (
+from sglang.srt.weight_utils import (
     default_weight_loader,
     hf_model_weights_iterator,
 )
@@ -131,7 +132,7 @@ class QWenAttention(nn.Module):
 
 
 class QWenBlock(nn.Module):
-    def __init__(self, config: PretrainedConfig, layer_id, quant_config=None):
+    def __init__(self, config: PretrainedConfig, layer_id, quant_config: Optional[QuantizationConfig] = None,):
         super().__init__()
         self.ln_1 = RMSNorm(config.hidden_size, eps=config.layer_norm_epsilon)
 
@@ -180,7 +181,7 @@ class QWenBlock(nn.Module):
 
 
 class QWenModel(nn.Module):
-    def __init__(self, config: PretrainedConfig, quant_config=None):
+    def __init__(self, config: PretrainedConfig, quant_config: Optional[QuantizationConfig] = None,):
         super().__init__()
         self.config = config
         self.vocab_size = config.vocab_size
@@ -217,7 +218,7 @@ class QWenModel(nn.Module):
 
 
 class QWenLMHeadModel(nn.Module):
-    def __init__(self, config: PretrainedConfig, quant_config=None):
+    def __init__(self, config: PretrainedConfig, quant_config: Optional[QuantizationConfig] = None,):
         super().__init__()
         self.config = config
         self.transformer = QWenModel(config, quant_config=quant_config)

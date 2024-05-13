@@ -10,17 +10,18 @@ from vllm.config import LoRAConfig
 from vllm.model_executor.layers.activation import GeluAndMul
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import (
-    QuantizationConfig,
     MergedColumnParallelLinear,
     QKVParallelLinear,
     RowParallelLinear,
 )
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizationConfig)
 from vllm.model_executor.layers.rotary_embedding import get_rope
 from vllm.model_executor.layers.vocab_parallel_embedding import VocabParallelEmbedding
-from vllm.distributed.parallel_state import (
+from vllm.distributed import (
     get_tensor_model_parallel_world_size,
 )
-from vllm.model_executor.weight_utils import (
+from sglang.srt.weight_utils import (
     default_weight_loader,
     hf_model_weights_iterator,
 )
@@ -45,7 +46,7 @@ class GemmaMLP(nn.Module):
             quant_config=quant_config,
         )
         self.down_proj = RowParallelLinear(
-            intermediate_size, hidden_size, bias=False, quant_config=quant_config
+            intermediate_size, hidden_size, bias=False, quant_config=quant_config,
         )
         self.act_fn = GeluAndMul()
 
@@ -203,7 +204,7 @@ class GemmaModel(nn.Module):
         )
         self.layers = nn.ModuleList(
             [
-                GemmaDecoderLayer(config, i, quant_config)
+                GemmaDecoderLayer(config, i, quant_config=quant_config)
                 for i in range(config.num_hidden_layers)
             ]
         )
@@ -271,7 +272,7 @@ class GemmaForCausalLM(nn.Module):
         super().__init__()
         self.config = config
         self.quant_config = quant_config
-        self.model = GemmaModel(config, quant_config)
+        self.model = GemmaModel(config, quant_config=quant_config)
         self.logits_processor = LogitsProcessor(config)
 
     @torch.no_grad()

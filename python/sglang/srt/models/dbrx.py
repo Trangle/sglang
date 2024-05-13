@@ -7,26 +7,25 @@ import torch
 import torch.nn as nn
 from vllm.model_executor.layers.fused_moe import fused_moe
 from vllm.model_executor.layers.linear import (
-    QuantizationConfig,
     QKVParallelLinear,
     ReplicatedLinear,
     RowParallelLinear,
 )
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizationConfig)
 from vllm.model_executor.layers.rotary_embedding import get_rope
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     DEFAULT_VOCAB_PADDING_SIZE,
     ParallelLMHead,
     VocabParallelEmbedding,
 )
-from vllm.distributed.communication_op import (
+from vllm.distributed import (
     tensor_model_parallel_all_reduce,
-)
-from vllm.distributed.parallel_state import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
 from vllm.model_executor.utils import set_weight_attrs
-from vllm.model_executor.weight_utils import (
+from sglang.srt.weight_utils import (
     default_weight_loader,
     hf_model_weights_iterator,
 )
@@ -259,7 +258,7 @@ class DbrxFusedNormAttention(nn.Module):
     ):
         super().__init__()
         self.d_model = config.d_model
-        self.attn = DbrxAttention(config, layer_id, quant_config)
+        self.attn = DbrxAttention(config, layer_id, quant_config=quant_config)
         self.norm_1 = nn.LayerNorm(self.d_model)
         self.norm_2 = nn.LayerNorm(self.d_model)
 
@@ -290,8 +289,8 @@ class DbrxBlock(nn.Module):
         quant_config: Optional[QuantizationConfig] = None,
     ):
         super().__init__()
-        self.norm_attn_norm = DbrxFusedNormAttention(config, layer_id, quant_config)
-        self.ffn = DbrxExperts(config, quant_config)
+        self.norm_attn_norm = DbrxFusedNormAttention(config, layer_id, quant_config=quant_config)
+        self.ffn = DbrxExperts(config, quant_config=quant_config)
 
     def forward(
         self,
@@ -321,7 +320,7 @@ class DbrxModel(nn.Module):
             config.d_model,
         )
         self.blocks = nn.ModuleList(
-            [DbrxBlock(config, i, quant_config) for i in range(config.n_layers)]
+            [DbrxBlock(config, i, quant_config=quant_config) for i in range(config.n_layers)]
         )
         self.norm_f = nn.LayerNorm(config.d_model, eps=1e-5)
         for module in self.modules():
@@ -357,7 +356,7 @@ class DbrxForCausalLM(nn.Module):
         self.config = config
         self.quant_config = quant_config
         self.unpadded_vocab_size = config.vocab_size
-        self.transformer = DbrxModel(config, quant_config)
+        self.transformer = DbrxModel(config, quant_config=quant_config)
         self.lm_head = ParallelLMHead(
             config.vocab_size,
             config.d_model,
