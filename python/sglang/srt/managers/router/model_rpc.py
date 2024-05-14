@@ -4,12 +4,13 @@ import multiprocessing
 import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import rpyc
 import torch
 from rpyc.utils.classic import obtain
 from rpyc.utils.server import ThreadedServer
+
 try:
     from vllm.logger import _default_handler as vllm_default_logger
 except ImportError:
@@ -23,7 +24,7 @@ from sglang.srt.managers.io_struct import (
     FlushCacheReq,
     TokenizedGenerateReqInput,
 )
-from sglang.srt.managers.router.infer_batch import Batch, ForwardMode, Req
+from sglang.srt.managers.router.infer_batch import Batch, ForwardMode, Req, FinishReason
 from sglang.srt.managers.router.model_runner import ModelRunner
 from sglang.srt.managers.router.radix_cache import RadixCache
 from sglang.srt.managers.router.scheduler import Scheduler
@@ -48,6 +49,7 @@ class ModelRpcServer:
         tp_rank: int,
         server_args: ServerArgs,
         port_args: PortArgs,
+        model_overide_args: Optional[dict] = None,
     ):
         server_args, port_args = [obtain(x) for x in [server_args, port_args]]
 
@@ -62,6 +64,7 @@ class ModelRpcServer:
             server_args.model_path,
             server_args.trust_remote_code,
             context_length=server_args.context_length,
+            model_overide_args=model_overide_args,
         )
 
         # For model end global settings
@@ -117,7 +120,11 @@ class ModelRpcServer:
             logger.info(f"server_args: {server_args.print_mode_args()}")
 
         # Init cache
-        self.tree_cache = RadixCache(disable=server_args.disable_radix_cache)
+        self.tree_cache = RadixCache(
+            req_to_token_pool=self.model_runner.req_to_token_pool,
+            token_to_kv_pool=self.model_runner.token_to_kv_pool,
+            disable=server_args.disable_radix_cache,
+        )
         self.tree_cache_metrics = {"total": 0, "hit": 0}
         self.scheduler = Scheduler(
             self.schedule_heuristic,
@@ -135,6 +142,8 @@ class ModelRpcServer:
         self.out_pyobjs = []
         self.decode_forward_ct = 0
         self.stream_interval = server_args.stream_interval
+        self.num_generated_tokens = 0
+        self.last_stats_tic = time.time()
 
         # Init the FSM cache for constrained generation
         self.regex_fsm_cache = FSMCache(
@@ -201,6 +210,8 @@ class ModelRpcServer:
             # Run new fill batch
             self.forward_fill_batch(new_batch)
 
+            self.cache_filled_batch(new_batch)
+
             if not new_batch.is_empty():
                 if self.running_batch is None:
                     self.running_batch = new_batch
@@ -211,6 +222,7 @@ class ModelRpcServer:
             if self.running_batch is not None:
                 # Run a few decode batches continuously for reducing overhead
                 for _ in range(10):
+                    self.num_generated_tokens += len(self.running_batch.reqs)
                     self.forward_decode_batch(self.running_batch)
 
                     if self.running_batch.is_empty():
@@ -226,10 +238,14 @@ class ModelRpcServer:
                                 self.token_to_kv_pool.available_size()
                                 + self.tree_cache.evictable_size()
                             )
+                            throuhgput = self.num_generated_tokens / (time.time() - self.last_stats_tic)
+                            self.num_generated_tokens = 0
+                            self.last_stats_tic = time.time()
                             logger.info(
                                 f"#running-req: {len(self.running_batch.reqs)}, "
                                 f"#token: {num_used}, "
                                 f"token usage: {num_used / self.max_total_num_token:.2f}, "
+                                f"gen throughput (token/s): {throuhgput:.2f}, "
                                 f"#queue-req: {len(self.forward_queue)}"
                             )
             else:
@@ -342,20 +358,19 @@ class ModelRpcServer:
                 and req.extend_input_len + new_batch_input_tokens
                 < self.max_prefill_num_token
             ):
-                delta = self.tree_cache.inc_ref_counter(req.last_node)
+                delta = self.tree_cache.inc_lock_ref(req.last_node)
                 available_size += delta
 
                 if not (
                     req.extend_input_len + req.max_new_tokens() + new_batch_total_tokens
                     < available_size
                 ):
-                    # Undo the insertion
-                    delta = self.tree_cache.dec_ref_counter(req.last_node)
+                    # Undo locking
+                    delta = self.tree_cache.dec_lock_ref(req.last_node)
                     available_size += delta
                     break
                 else:
                     # Add this request to the running batch
-                    self.token_to_kv_pool.add_refs(req.prefix_indices)
                     can_run_list.append(req)
                     new_batch_total_tokens += (
                         req.extend_input_len + req.max_new_tokens()
@@ -469,6 +484,18 @@ class ModelRpcServer:
             pt += req.extend_input_len
 
         self.handle_finished_requests(batch)
+
+    def cache_filled_batch(self, batch: Batch):
+        req_pool_indices_cpu = batch.req_pool_indices.cpu().tolist()
+        for i, req in enumerate(batch.reqs):
+            new_prefix_indices, new_last_node = self.tree_cache.cache_req(
+                token_ids=tuple(req.input_ids + req.output_ids)[:-1],
+                last_uncached_pos=len(req.prefix_indices),
+                req_pool_idx=req_pool_indices_cpu[i],
+                del_in_memory_pool=False,
+                old_last_node=req.last_node,
+            )
+            req.prefix_indices, req.last_node = new_prefix_indices, new_last_node
 
     def forward_decode_batch(self, batch: Batch):
         # check if decode out of memory
@@ -588,7 +615,7 @@ class ModelRpcServer:
                     + len(req.output_ids)
                     - req.prompt_tokens,
                     "completion_tokens_wo_jump_forward": req.completion_tokens_wo_jump_forward,
-                    "finish_reason": str(req.finish_reason),  # FIXME: convert to the correct string
+                    "finish_reason": FinishReason.to_str(req.finish_reason),
                     "hit_stop_str": req.hit_stop_str,
                 }
                 if req.return_logprob:
@@ -629,17 +656,13 @@ class ModelRpcServer:
             req_pool_indices_cpu = batch.req_pool_indices.tolist()
             for i in finished_indices:
                 req = batch.reqs[i]
-                req_pool_idx = req_pool_indices_cpu[i]
-                token_ids = tuple(req.input_ids + req.output_ids)
-                seq_len = len(token_ids) - 1
-                indices = self.req_to_token_pool.req_to_token[req_pool_idx, :seq_len]
-                prefix_len = self.tree_cache.insert(
-                    token_ids[:seq_len], indices.clone()
+                self.tree_cache.cache_req(
+                    token_ids=tuple(req.input_ids + req.output_ids)[:-1],
+                    last_uncached_pos=len(req.prefix_indices),
+                    req_pool_idx=req_pool_indices_cpu[i],
                 )
 
-                self.token_to_kv_pool.dec_refs(indices[:prefix_len])
-                self.req_to_token_pool.free(req_pool_idx)
-                self.tree_cache.dec_ref_counter(req.last_node)
+                self.tree_cache.dec_lock_ref(req.last_node)
 
             # Update batch tensors
             if unfinished_indices:
@@ -653,13 +676,15 @@ class ModelRpcService(rpyc.Service):
 
 
 class ModelRpcClient:
-    def __init__(self, server_args: ServerArgs, port_args: PortArgs):
+    def __init__(
+        self, server_args: ServerArgs, port_args: PortArgs, model_overide_args
+    ):
         tp_size = server_args.tp_size
 
         if tp_size == 1:
             # Init model
             self.model_server = ModelRpcService().exposed_ModelRpcServer(
-                0, server_args, port_args
+                0, server_args, port_args, model_overide_args
             )
 
             # Wrap functions
@@ -680,7 +705,7 @@ class ModelRpcClient:
                 # Init model
                 def init_model(i):
                     return self.remote_services[i].ModelRpcServer(
-                        i, server_args, port_args
+                        i, server_args, port_args, model_overide_args
                     )
 
                 self.model_servers = executor.map(init_model, range(tp_size))
@@ -703,7 +728,11 @@ def _init_service(port):
     t = ThreadedServer(
         ModelRpcService(),
         port=port,
-        protocol_config={"allow_pickle": True, "sync_request_timeout": 1800},
+        protocol_config={
+            "allow_public_attrs": True,
+            "allow_pickle": True,
+            "sync_request_timeout": 1800,
+        },
     )
     t.start()
 
@@ -719,7 +748,11 @@ def start_model_process(port):
             con = rpyc.connect(
                 "localhost",
                 port,
-                config={"allow_pickle": True, "sync_request_timeout": 1800},
+                config={
+                    "allow_public_attrs": True,
+                    "allow_pickle": True,
+                    "sync_request_timeout": 1800,
+                },
             )
             break
         except ConnectionRefusedError:

@@ -9,16 +9,16 @@ from typing import List
 
 import numpy as np
 import torch
+from vllm.distributed import initialize_model_parallel
 from vllm.model_executor.layers.quantization.awq import AWQConfig
 from vllm.model_executor.layers.quantization.gptq import GPTQConfig
 from vllm.model_executor.layers.quantization.marlin import MarlinConfig
 from vllm.model_executor.model_loader.utils import set_default_torch_dtype
-from vllm.distributed import initialize_model_parallel
 
 from sglang.srt.managers.router.infer_batch import Batch, ForwardMode
 from sglang.srt.memory_pool import ReqToTokenPool, TokenToKVPool
-from sglang.srt.utils import is_multimodal_model
-from sglang.utils import get_available_gpu_memory
+from sglang.srt.utils import is_multimodal_model, get_available_gpu_memory
+
 
 QUANTIZATION_CONFIG_MAPPING = {
     "awq": AWQConfig,
@@ -143,7 +143,7 @@ class InputMetadata:
                 self.kv_last_page_len,
                 self.model_runner.model_config.num_attention_heads // tp_size,
                 self.model_runner.model_config.num_key_value_heads // tp_size,
-                self.model_runner.model_config.head_dim
+                self.model_runner.model_config.head_dim,
             ]
 
             self.prefill_wrapper.begin_forward(*args)

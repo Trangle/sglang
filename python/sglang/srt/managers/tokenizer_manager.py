@@ -60,21 +60,29 @@ def get_pixel_values(
 ):
     try:
         processor = processor or global_processor
-        image = load_image(image_data)
-        image_hash = hash(image_data)
-        if image_aspect_ratio == "pad":
-            image = expand2square(
-                image, tuple(int(x * 255) for x in processor.image_processor.image_mean)
-            )
-            pixel_values = processor.image_processor(image)["pixel_values"][0]
-        elif image_aspect_ratio == "anyres":
-            pixel_values = process_anyres_image(
-                image, processor.image_processor, image_grid_pinpoints
-            )
+        image, image_size = load_image(image_data)
+        if image_size != None:
+            image_hash = hash(image_data)
+            pixel_values = processor.image_processor(image)["pixel_values"]
+            for _ in range(len(pixel_values)):
+                pixel_values[_] = pixel_values[_].astype(np.float16)
+            pixel_values = np.stack(pixel_values, axis=0)
+            return pixel_values, image_hash, image_size
         else:
-            pixel_values = processor.image_processor(image)["pixel_values"][0]
-        pixel_values = pixel_values.astype(np.float16)
-        return pixel_values, image_hash, image.size
+            image_hash = hash(image_data)
+            if image_aspect_ratio == "pad":
+                image = expand2square(
+                    image, tuple(int(x * 255) for x in processor.image_processor.image_mean)
+                )
+                pixel_values = processor.image_processor(image)["pixel_values"][0]
+            elif image_aspect_ratio == "anyres":
+                pixel_values = process_anyres_image(
+                    image, processor.image_processor, image_grid_pinpoints
+                )
+            else:
+                pixel_values = processor.image_processor(image)["pixel_values"][0]
+            pixel_values = pixel_values.astype(np.float16)
+            return pixel_values, image_hash, image.size
     except Exception:
         print("Exception in TokenizerManager:\n" + get_exception_traceback())
 
@@ -84,6 +92,7 @@ class TokenizerManager:
         self,
         server_args: ServerArgs,
         port_args: PortArgs,
+        model_overide_args: dict = None,
     ):
         self.server_args = server_args
 
@@ -96,9 +105,10 @@ class TokenizerManager:
 
         self.model_path = server_args.model_path
         self.hf_config = get_config(
-            self.model_path, trust_remote_code=server_args.trust_remote_code
+            self.model_path,
+            trust_remote_code=server_args.trust_remote_code,
+            model_overide_args=model_overide_args,
         )
-
         self.context_len = get_context_length(self.hf_config)
 
         if is_multimodal_model(self.model_path):
@@ -155,6 +165,12 @@ class TokenizerManager:
                 input_ids = self.tokenizer.encode(obj.text)
             else:
                 input_ids = obj.input_ids
+
+            if len(input_ids) >= self.context_len:
+                raise ValueError(
+                    f"The input ({len(input_ids)} tokens) is longer than the "
+                    f"model's context length ({self.context_len} tokens)"
+                )
 
             sampling_params = SamplingParams(**obj.sampling_params)
             if sampling_params.max_new_tokens != 0:

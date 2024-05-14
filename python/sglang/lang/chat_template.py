@@ -344,6 +344,8 @@ def match_vicuna(model_path: str, model_id: str = None):
         return get_chat_template("vicuna_v1.1")
     if "llava-v1.5" in model_path.lower():
         return get_chat_template("vicuna_v1.1")
+    if "llava-next-video-7b" in model_path.lower():
+        return get_chat_template("vicuna_v1.1")
 
 
 @register_chat_template_matching_function
@@ -382,7 +384,11 @@ def match_chat_ml(model_path: str, model_id: str = None):
         return get_chat_template("chatml")
     if "qwen" in model_path and "chat" in model_path:
         return get_chat_template("chatml")
-    if "llava-v1.6-34b" in model_path:
+    if (
+        "llava-v1.6-34b" in model_path
+        or "llava-v1.6-yi-34b" in model_path
+        or "llava-next-video-34b" in model_path
+    ):
         return get_chat_template("chatml-llava")
 
 
@@ -391,7 +397,7 @@ def match_chat_yi(model_path: str, model_id: str = None):
     if model_id and model_id == "yi":
         return get_chat_template("yi")
     model_path = model_path.lower()
-    if "yi" in model_path:
+    if "yi" in model_path and "llava" not in model_path:
         return get_chat_template("yi")
 
 
