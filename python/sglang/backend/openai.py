@@ -1,7 +1,7 @@
+import dataclasses
 import logging
 import time
 import warnings
-import dataclasses
 from typing import Callable, List, Optional, Union
 
 import numpy as np
@@ -107,14 +107,16 @@ class OpenAI(BaseBackend):
     def get_chat_template(self):
         return self.chat_template
 
-    def _prepare_spec_execution(self, sampling_params: SglSamplingParams,
-                                num_api_spec_tokens: int, spec_var_name: str):
+    def _prepare_spec_execution(
+        self,
+        sampling_params: SglSamplingParams,
+        num_api_spec_tokens: int,
+        spec_var_name: str,
+    ):
         if "max_tokens" not in self.spec_kwargs:
             self.spec_kwargs["max_tokens"] = num_api_spec_tokens
         else:
-            assert (
-                self.spec_kwargs["max_tokens"] == num_api_spec_tokens
-            )
+            assert self.spec_kwargs["max_tokens"] == num_api_spec_tokens
 
         params = sampling_params.to_openai_kwargs()
         for key, value in params.items():
@@ -153,8 +155,9 @@ class OpenAI(BaseBackend):
                         )
                     prompt = s.messages_
                 else:
-                    return self._prepare_spec_execution(sampling_params,
-                        s.num_api_spec_tokens, spec_var_name)
+                    return self._prepare_spec_execution(
+                        sampling_params, s.num_api_spec_tokens, spec_var_name
+                    )
             else:
                 prompt = s.text_
 
@@ -327,7 +330,7 @@ class OpenAI(BaseBackend):
             ret_str = ret.choices[0].text
             ret_token = self.tokenizer.encode(ret_str)[0]
             self.token_usage.prompt_tokens += ret.usage.prompt_tokens
-            self.token_usage.completion_tokens= ret.usage.completion_tokens
+            self.token_usage.completion_tokens = ret.usage.completion_tokens
 
             # TODO:
             # 1. return logits as the scores
@@ -357,7 +360,9 @@ class OpenAI(BaseBackend):
         return decision, scores, None, None
 
 
-def openai_completion(client, token_usage, is_chat=None, retries=3, prompt=None, **kwargs):
+def openai_completion(
+    client, token_usage, is_chat=None, retries=3, prompt=None, **kwargs
+):
     for attempt in range(retries):
         try:
             if is_chat:
@@ -387,15 +392,19 @@ def openai_completion(client, token_usage, is_chat=None, retries=3, prompt=None,
     return comp
 
 
-def openai_completion_stream(client, token_usage, is_chat=None, retries=3, prompt=None, **kwargs):
+def openai_completion_stream(
+    client, token_usage, is_chat=None, retries=3, prompt=None, **kwargs
+):
     for attempt in range(retries):
         try:
             if is_chat:
                 if "stop" in kwargs and kwargs["stop"] is None:
                     kwargs.pop("stop")
                 generator = client.chat.completions.create(
-                    messages=prompt, stream=True, stream_options={"include_usage": True},
-                    **kwargs
+                    messages=prompt,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                    **kwargs,
                 )
                 for ret in generator:
                     if len(ret.choices) == 0:
@@ -407,8 +416,10 @@ def openai_completion_stream(client, token_usage, is_chat=None, retries=3, promp
                     yield content or "", {}
             else:
                 generator = client.completions.create(
-                    prompt=prompt, stream=True, stream_options={"include_usage": True},
-                    **kwargs
+                    prompt=prompt,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                    **kwargs,
                 )
                 for ret in generator:
                     if len(ret.choices) == 0:
