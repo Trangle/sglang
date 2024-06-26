@@ -23,6 +23,7 @@ from sglang.srt.server_args import ServerArgs
 from sglang.srt.utils import (
     get_available_gpu_memory,
     is_multimodal_model,
+    monkey_patch_vllm_dummy_weight_loader,
     monkey_patch_vllm_p2p_access_check,
 )
 
@@ -229,6 +230,7 @@ class ModelRunner:
         self.nccl_port = nccl_port
         self.server_args = server_args
         self.is_multimodal_model = is_multimodal_model(self.model_config)
+        monkey_patch_vllm_dummy_weight_loader()
 
         # Init torch distributed
         logger.info(f"[gpu_id={self.gpu_id}] Set cuda device.")
@@ -268,6 +270,7 @@ class ModelRunner:
         # Load the model and create memory pool
         self.load_model()
         self.init_memory_pool(total_gpu_memory)
+        self.init_cublas()
         self.init_flash_infer()
 
     def load_model(self):
@@ -343,6 +346,15 @@ class ModelRunner:
             f"[gpu_id={self.gpu_id}] Memory pool end. "
             f"avail mem={get_available_gpu_memory(self.gpu_id):.2f} GB"
         )
+
+    def init_cublas(self):
+        """We need to run a small matmul to init cublas. Otherwise, it will raise some errors later."""
+        dtype = torch.float16
+        device = "cuda"
+        a = torch.ones((16, 16), dtype=dtype, device=device)
+        b = torch.ones((16, 16), dtype=dtype, device=device)
+        c = a @ b
+        return c
 
     def init_flash_infer(self):
         if global_server_args_dict.get("enable_flashinfer", False):
