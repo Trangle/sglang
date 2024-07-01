@@ -98,10 +98,7 @@ class ModelTpServer:
             )
         self.max_total_num_tokens = self.model_runner.max_total_num_tokens
         self.max_prefill_tokens = (
-            max(
-                self.model_config.context_len,
-                min(self.max_total_num_tokens // 6, 32768),
-            )
+            4096
             if server_args.max_prefill_tokens is None
             else server_args.max_prefill_tokens
         )
@@ -120,7 +117,7 @@ class ModelTpServer:
             f"[gpu_id={self.gpu_id}] "
             f"max_total_num_tokens={self.max_total_num_tokens}, "
             f"max_prefill_tokens={self.max_prefill_tokens}, "
-            f"context_len={self.model_config.context_len}, "
+            f"context_len={self.model_config.context_len}"
         )
         if self.tp_rank == 0:
             logger.info(
@@ -283,13 +280,14 @@ class ModelTpServer:
                 (recv_req.image_hash >> 64) % self.model_config.vocab_size,
             ]
             req.image_size = recv_req.image_size
-            req.origin_input_ids, req.image_offset = (
-                self.model_runner.model.pad_input_ids(
-                    req.origin_input_ids_unpadded,
-                    req.pad_value,
-                    req.pixel_values.shape,
-                    req.image_size,
-                )
+            (
+                req.origin_input_ids,
+                req.image_offset,
+            ) = self.model_runner.model.pad_input_ids(
+                req.origin_input_ids_unpadded,
+                req.pad_value,
+                req.pixel_values.shape,
+                req.image_size,
             )
         req.sampling_params = recv_req.sampling_params
         req.return_logprob = recv_req.return_logprob
@@ -370,8 +368,9 @@ class ModelTpServer:
             if (
                 req.extend_input_len + req.max_new_tokens() + new_batch_total_tokens
                 < available_size
-                and req.extend_input_len + new_batch_input_tokens
-                < self.max_prefill_tokens
+                and (req.extend_input_len + new_batch_input_tokens
+                <= self.max_prefill_tokens
+                or len(can_run_list) == 0)
             ):
                 delta = self.tree_cache.inc_lock_ref(req.last_node)
                 available_size += delta
