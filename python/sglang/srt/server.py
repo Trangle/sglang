@@ -152,7 +152,9 @@ def launch_server(server_args: ServerArgs, pipe_finish_writer, model_overide_arg
     if server_args.disable_disk_cache:
         disable_cache()
     if not server_args.disable_flashinfer:
-        assert_pkg_version("flashinfer", "0.0.8")
+        assert_pkg_version("flashinfer", "0.0.8", "Please uninstall the old version and "
+                           "reinstall the latest version by following the instructions "
+                           "at https://docs.flashinfer.ai/installation.html.")
     if server_args.chat_template:
         # TODO: replace this with huggingface transformers template
         load_chat_template_for_openai_api(server_args.chat_template)
