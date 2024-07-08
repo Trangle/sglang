@@ -316,7 +316,7 @@ class TokenizerManager:
 
                 recv_obj.meta_info[i]["id"] = rid
                 out_dict = {
-                    "text": recv_obj.output_str[i],
+                    "text": recv_obj.output_strs[i],
                     "meta_info": recv_obj.meta_info[i],
                 }
                 state.out_list.append(out_dict)
@@ -334,15 +334,15 @@ class TokenizerManager:
                 ret["meta_info"]["decode_token_logprobs"], return_text_in_logprobs
             )
         if top_logprobs_num > 0:
-            ret["meta_info"][
-                "prefill_top_logprobs"
-            ] = self.detokenize_top_logprobs_tokens(
-                ret["meta_info"]["prefill_top_logprobs"], return_text_in_logprobs
+            ret["meta_info"]["prefill_top_logprobs"] = (
+                self.detokenize_top_logprobs_tokens(
+                    ret["meta_info"]["prefill_top_logprobs"], return_text_in_logprobs
+                )
             )
-            ret["meta_info"][
-                "decode_top_logprobs"
-            ] = self.detokenize_top_logprobs_tokens(
-                ret["meta_info"]["decode_top_logprobs"], return_text_in_logprobs
+            ret["meta_info"]["decode_top_logprobs"] = (
+                self.detokenize_top_logprobs_tokens(
+                    ret["meta_info"]["decode_top_logprobs"], return_text_in_logprobs
+                )
             )
         return ret
 
