@@ -15,18 +15,10 @@ from vllm import _custom_ops as ops
 
 from sglang.srt.layers.moe.topk import select_experts
 from sglang.srt.layers.quantization.fp8_kernel import per_token_group_quant_fp8
-from sglang.srt.utils import (
-    direct_register_custom_op,
-    get_device_name,
-    is_cuda_available,
-    is_hip,
-)
+from sglang.srt.utils import direct_register_custom_op, get_device_name, is_hip
 
-is_cuda = is_cuda_available()
 is_hip_flag = is_hip()
-if is_cuda:
-    from sgl_kernel import moe_align_block_size as sgl_moe_align_block_size
-
+from sgl_kernel import moe_align_block_size as sgl_moe_align_block_size
 
 logger = logging.getLogger(__name__)
 padding_size = 128 if bool(int(os.getenv("MOE_PADDING", "0"))) else 0
@@ -415,7 +407,7 @@ def moe_align_block_size(
     )
     num_tokens_post_pad = torch.empty((1), dtype=torch.int32, device=topk_ids.device)
     if num_experts >= 224:
-        if enable_moe_align_block_size_triton or is_hip_flag:
+        if enable_moe_align_block_size_triton:
             moe_align_block_size_triton(
                 topk_ids,
                 num_experts,
@@ -711,6 +703,7 @@ def inplace_fused_experts(
     w2: torch.Tensor,
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
+    activation: str = "silu",
     use_fp8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
     w1_scale: Optional[torch.Tensor] = None,
@@ -726,6 +719,7 @@ def inplace_fused_experts(
         topk_weights,
         topk_ids,
         True,
+        activation,
         use_fp8_w8a8,
         use_int8_w8a16,
         w1_scale,
@@ -742,6 +736,7 @@ def inplace_fused_experts_fake(
     w2: torch.Tensor,
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
+    activation: str = "silu",
     use_fp8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
     w1_scale: Optional[torch.Tensor] = None,
@@ -767,6 +762,7 @@ def outplace_fused_experts(
     w2: torch.Tensor,
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
+    activation: str = "silu",
     use_fp8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
     w1_scale: Optional[torch.Tensor] = None,
@@ -782,6 +778,7 @@ def outplace_fused_experts(
         topk_weights,
         topk_ids,
         False,
+        activation,
         use_fp8_w8a8,
         use_int8_w8a16,
         w1_scale,
@@ -798,6 +795,7 @@ def outplace_fused_experts_fake(
     w2: torch.Tensor,
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
+    activation: str = "silu",
     use_fp8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
     w1_scale: Optional[torch.Tensor] = None,
@@ -824,6 +822,7 @@ def fused_experts(
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
     inplace: bool = False,
+    activation: str = "silu",
     use_fp8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
     w1_scale: Optional[torch.Tensor] = None,
@@ -839,6 +838,7 @@ def fused_experts(
             w2,
             topk_weights,
             topk_ids,
+            activation,
             use_fp8_w8a8,
             use_int8_w8a16,
             w1_scale,
@@ -855,6 +855,7 @@ def fused_experts(
             w2,
             topk_weights,
             topk_ids,
+            activation,
             use_fp8_w8a8,
             use_int8_w8a16,
             w1_scale,
@@ -872,6 +873,7 @@ def fused_experts_impl(
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
     inplace: bool = False,
+    activation: str = "silu",
     use_fp8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
     w1_scale: Optional[torch.Tensor] = None,
@@ -986,7 +988,12 @@ def fused_experts_impl(
             block_shape=block_shape,
         )
 
-        ops.silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
+        if activation == "silu":
+            ops.silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
+        elif activation == "gelu":
+            ops.gelu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
+        else:
+            raise ValueError(f"Unsupported activation: {activation=}")
 
         invoke_fused_moe_kernel(
             intermediate_cache2,
@@ -1042,6 +1049,7 @@ def fused_moe(
     topk: int,
     renormalize: bool,
     inplace: bool = False,
+    activation: str = "silu",
     use_grouped_topk: bool = False,
     num_expert_group: Optional[int] = None,
     topk_group: Optional[int] = None,
@@ -1111,6 +1119,7 @@ def fused_moe(
         topk_weights,
         topk_ids,
         inplace=inplace,
+        activation=activation,
         use_fp8_w8a8=use_fp8_w8a8,
         use_int8_w8a16=use_int8_w8a16,
         w1_scale=w1_scale,

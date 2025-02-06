@@ -29,7 +29,7 @@ concurrency:
 jobs:
 
   unit-test-frontend:
-    if: github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request'
+    if: (github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request') && github.event.pull_request.draft == false
     runs-on: 1-gpu-runner
     steps:
       - name: Checkout code
@@ -37,7 +37,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.4/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.4/flashinfer' }}
+          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.5/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.5/flashinfer' }}
         run: |
           bash scripts/ci_install_dependency.sh
 
@@ -48,9 +48,10 @@ jobs:
           python3 run_suite.py --suite per-commit
 
   unit-test-backend-1-gpu:
-    if: github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request'
+    if: (github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request') && github.event.pull_request.draft == false
     runs-on: 1-gpu-runner
     strategy:
+      fail-fast: false
       matrix:
         range: [0-6, 6-15, 15-22, 22-32, 32-40, 40-100]
     steps:
@@ -59,7 +60,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.4/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.4/flashinfer' }}
+          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.5/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.5/flashinfer' }}
         run: |
           bash scripts/ci_install_dependency.sh
 
@@ -75,7 +76,7 @@ jobs:
 
 
   unit-test-backend-2-gpu:
-    if: github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request'
+    if: (github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request') && github.event.pull_request.draft == false
     runs-on: 2-gpu-runner
     steps:
       - name: Checkout code
@@ -83,7 +84,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.4/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.4/flashinfer' }}
+          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.5/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.5/flashinfer' }}
         run: |
           bash scripts/ci_install_dependency.sh
 
@@ -112,7 +113,7 @@ jobs:
           python3 test_moe_ep.py
 
   performance-test-1-gpu-part-1:
-    if: github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request'
+    if: (github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request') && github.event.pull_request.draft == false
     runs-on: 1-gpu-runner
     steps:
       - name: Checkout code
@@ -120,7 +121,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.4/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.4/flashinfer' }}
+          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.5/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.5/flashinfer' }}
         run: |
           bash scripts/ci_install_dependency.sh
 
@@ -156,7 +157,7 @@ jobs:
 
 
   performance-test-1-gpu-part-2:
-    if: github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request'
+    if: (github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request') && github.event.pull_request.draft == false
     runs-on: 1-gpu-runner
     steps:
       - name: Checkout code
@@ -164,7 +165,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.4/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.4/flashinfer' }}
+          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.5/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.5/flashinfer' }}
         run: |
           bash scripts/ci_install_dependency.sh
 
@@ -187,7 +188,7 @@ jobs:
           python3 -m unittest test_bench_serving.TestBenchServing.test_offline_throughput_default_fp8
 
   performance-test-2-gpu:
-    if: github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request'
+    if: (github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request') && github.event.pull_request.draft == false
     runs-on: 2-gpu-runner
     steps:
       - name: Checkout code
@@ -195,7 +196,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.4/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.4/flashinfer' }}
+          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.5/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.5/flashinfer' }}
         run: |
           bash scripts/ci_install_dependency.sh
 
@@ -225,7 +226,7 @@ jobs:
 
 
   accuracy-test-1-gpu:
-    if: github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request'
+    if: (github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request') && github.event.pull_request.draft == false
     runs-on: 1-gpu-runner
     steps:
       - name: Checkout code
@@ -233,7 +234,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.4/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.4/flashinfer' }}
+          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.5/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.5/flashinfer' }}
         run: |
           bash scripts/ci_install_dependency.sh
 
@@ -249,7 +250,7 @@ jobs:
 
 
   accuracy-test-2-gpu:
-    if: github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request'
+    if: (github.repository == 'sgl-project/sglang' || github.event_name == 'pull_request') && github.event.pull_request.draft == false
     runs-on: 2-gpu-runner
     steps:
       - name: Checkout code
@@ -257,7 +258,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.4/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.4/flashinfer' }}
+          FLASHINFER_REPO: ${{ inputs.version == 'nightly' && 'https://flashinfer.ai/whl/nightly/cu124/torch2.5/flashinfer' || 'https://flashinfer.ai/whl/cu124/torch2.5/flashinfer' }}
         run: |
           bash scripts/ci_install_dependency.sh
 
