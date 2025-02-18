@@ -8,6 +8,7 @@ on:
       - "python/sglang/**"
       - "test/**"
       - "docs/**"
+      - "scripts/**"
   pull_request:
     branches: [ main ]
     paths:
@@ -15,6 +16,7 @@ on:
       - "python/sglang/**"
       - "test/**"
       - "docs/**"
+      - "scripts/**"
   workflow_dispatch:
     inputs:
       version:
@@ -45,6 +47,8 @@ jobs:
           filters: |
             docs:
               - 'docs/**'
+            scripts:
+              - 'scripts/**'
             sglang:
               - 'python/sglang/**'
             test:
@@ -103,6 +107,8 @@ jobs:
           bash scripts/ci_install_dependency.sh
 
       - name: Run test
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         timeout-minutes: 30
         run: |
           RANGE=${{ matrix.range }}
