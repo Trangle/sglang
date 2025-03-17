@@ -23,6 +23,7 @@ import triton.language as tl
 from torch import nn
 
 from sglang.srt.distributed import (
+    get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
     tensor_model_parallel_all_gather,
 )
@@ -417,7 +418,7 @@ class LogitsProcessor(nn.Module):
             )
         else:
             # GGUF models
-            logits = lm_head.linear_method.apply(lm_head, hidden_states, embedding_bias)
+            logits = lm_head.quant_method.apply(lm_head, hidden_states, embedding_bias)
 
         if self.logit_scale is not None:
             logits.mul_(self.logit_scale)
