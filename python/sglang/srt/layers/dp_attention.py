@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import logging
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, List
 
 import torch
 import triton
@@ -38,7 +38,12 @@ def compute_dp_attention_world_info(enable_dp_attention, tp_rank, tp_size, dp_si
     return attn_tp_rank, attn_tp_size, dp_rank
 
 
-def initialize_dp_attention(enable_dp_attention, tp_rank, tp_size, dp_size):
+def initialize_dp_attention(
+    enable_dp_attention: bool,
+    tp_rank: int,
+    tp_size: int,
+    dp_size: int,
+):
     global _ATTN_TP_GROUP, _ATTN_TP_RANK, _ATTN_TP_SIZE, _DP_RANK, _DP_SIZE
 
     from sglang.srt.layers.sampler import SYNC_TOKEN_IDS_ACROSS_TP
@@ -46,7 +51,11 @@ def initialize_dp_attention(enable_dp_attention, tp_rank, tp_size, dp_size):
     _ATTN_TP_RANK, _ATTN_TP_SIZE, _DP_RANK = compute_dp_attention_world_info(
         enable_dp_attention, tp_rank, tp_size, dp_size
     )
-    _DP_SIZE = dp_size
+
+    if enable_dp_attention:
+        _DP_SIZE = dp_size
+    else:
+        _DP_SIZE = 1
 
     tp_group = get_tp_group()
     _ATTN_TP_GROUP = GroupCoordinator(
@@ -54,7 +63,7 @@ def initialize_dp_attention(enable_dp_attention, tp_rank, tp_size, dp_size):
             list(range(head, head + _ATTN_TP_SIZE))
             for head in range(0, tp_size, _ATTN_TP_SIZE)
         ],
-        tp_rank,
+        tp_group.local_rank,
         torch.distributed.get_backend(tp_group.device_group),
         SYNC_TOKEN_IDS_ACROSS_TP,
         False,
@@ -169,20 +178,19 @@ def memcpy_triton(dst, src, dim, offset, sz, offset_src):
     memcpy_triton_kernel[grid](dst, src, offset, sz, offset_src, chunk_size, BLOCK_SIZE)
 
 
-def dp_gather(
+def _dp_gather(
     global_tokens: torch.Tensor,
     local_tokens: torch.Tensor,
     forward_batch: ForwardBatch,
-    layer_id: Union[str, int],
+    is_partial: bool,
 ):
     local_start_pos, local_num_tokens = get_dp_local_info(forward_batch)
 
     global_tokens.fill_(0)
     assert local_tokens.is_contiguous()
     assert global_tokens.is_contiguous()
-    if local_tokens.shape[0] > 0 and (
-        layer_id != "embedding" or get_attention_tp_rank() == 0
-    ):
+
+    if local_tokens.shape[0] > 0 and (is_partial or get_attention_tp_rank() == 0):
         assert (
             global_tokens.untyped_storage().data_ptr()
             != local_tokens.untyped_storage().data_ptr()
@@ -203,6 +211,22 @@ def dp_gather(
 
     else:
         global_tokens[:] = tensor_model_parallel_all_reduce(global_tokens)
+
+
+def dp_gather_partial(
+    global_tokens: torch.Tensor,
+    local_tokens: torch.Tensor,
+    forward_batch: ForwardBatch,
+):
+    _dp_gather(global_tokens, local_tokens, forward_batch, is_partial=True)
+
+
+def dp_gather_replicate(
+    global_tokens: torch.Tensor,
+    local_tokens: torch.Tensor,
+    forward_batch: ForwardBatch,
+):
+    _dp_gather(global_tokens, local_tokens, forward_batch, is_partial=False)
 
 
 def dp_scatter(
@@ -227,14 +251,12 @@ def dp_scatter(
         )
 
 
-def get_do_logits_dp_scatter(forward_batch: ForwardBatch):
-    def do_logits_dp_scatter(logits: torch.Tensor):
-        local_logits = torch.empty(
-            (forward_batch.input_ids.shape[0], *logits.shape[1:]),
-            dtype=logits.dtype,
-            device=logits.device,
-        )
-        dp_scatter(local_logits, logits, forward_batch)
-        return local_logits
+def tp_reduce_scatter(
+    output: torch.Tensor,
+    input_list: List[torch.Tensor],
+):
+    return get_attention_tp_group().reduce_scatter(output, input_list)
 
-    return do_logits_dp_scatter
+
+def tp_all_gather(output_list: List[torch.Tensor], input_: torch.Tensor):
+    return get_attention_tp_group().all_gather(input_, tensor_list=output_list)
