@@ -2,25 +2,32 @@
 # Install the dependency in CI.
 set -euxo pipefail
 
-# Use repo from environment variables, passed from GitHub Actions
-FLASHINFER_REPO="${FLASHINFER_REPO:-https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python}"
-
+# Kill existing processes
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 bash "${SCRIPT_DIR}/killall_sglang.sh"
 
+# Update pip
 pip install --upgrade pip
-pip uninstall flashinfer -y
-pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 
+# Clean up existing installations
+pip uninstall -y flashinfer flashinfer_python sgl-kernel sglang vllm
+pip cache purge
 rm -rf /root/.cache/flashinfer
-# Force reinstall flashinfer and torch_memory_saver
-pip install flashinfer_python==0.2.3 --find-links ${FLASHINFER_REPO} --force-reinstall --no-deps
-pip install sgl-kernel==0.0.6 --force-reinstall
+rm -rf /usr/local/lib/python3.10/dist-packages/flashinfer*
+rm -rf /usr/local/lib/python3.10/dist-packages/sgl_kernel*
 
-pip install torch_memory_saver
-pip install transformers==4.50.0 sentence_transformers accelerate==1.4.0 peft pandas datasets timm torchaudio
+# Install the main package
+pip install -e "python[dev]"
 
-# For compling xgrammar kernels
-pip install cuda-python nvidia-cuda-nvrtc-cu12
+# Install additional dependencies
+pip install mooncake-transfer-engine==0.3.0 nvidia-cuda-nvrtc-cu12
 
-pip uninstall vllm -y || true
+# For lmms_evals evaluating MMMU
+git clone --branch v0.3.3 --depth 1 https://github.com/EvolvingLMMs-Lab/lmms-eval.git
+pip install -e lmms-eval/
+
+# Install FlashMLA for attention backend tests
+pip install git+https://github.com/deepseek-ai/FlashMLA.git
+
+# Install hf_xet
+pip install huggingface_hub[hf_xet]
