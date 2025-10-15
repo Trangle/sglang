@@ -90,8 +90,8 @@ class OpenAIServingCompletion(OpenAIServingBase):
         else:
             prompt_kwargs = {"input_ids": prompt}
 
-        # Extract customer labels from raw request headers
-        customer_labels = self.extract_customer_labels(raw_request)
+        # Extract custom labels from raw request headers
+        custom_labels = self.extract_custom_labels(raw_request)
 
         adapted_request = GenerateReqInput(
             **prompt_kwargs,
@@ -107,7 +107,9 @@ class OpenAIServingCompletion(OpenAIServingBase):
             bootstrap_room=request.bootstrap_room,
             return_hidden_states=request.return_hidden_states,
             rid=request.rid,
-            customer_labels=customer_labels,
+            extra_key=self._compute_extra_key(request),
+            priority=request.priority,
+            custom_labels=custom_labels,
         )
 
         return adapted_request, request
@@ -121,6 +123,7 @@ class OpenAIServingCompletion(OpenAIServingBase):
             "min_new_tokens": request.min_tokens,
             "stop": request.stop,
             "stop_token_ids": request.stop_token_ids,
+            "stop_regex": request.stop_regex,
             "top_p": request.top_p,
             "top_k": request.top_k,
             "min_p": request.min_p,
